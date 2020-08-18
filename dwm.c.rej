@@ -1,0 +1,63 @@
+diff a/dwm.c b/dwm.c	(rejected hunks)
+@@ -171,12 +177,14 @@ static void focus(Client *c);
+ static void focusin(XEvent *e);
+ static void focusmon(const Arg *arg);
+ static void focusstack(const Arg *arg);
++static pid_t getparentprocess(pid_t p);
+ static int getrootptr(int *x, int *y);
+ static long getstate(Window w);
+ static int gettextprop(Window w, Atom atom, char *text, unsigned int size);
+ static void grabbuttons(Client *c, int focused);
+ static void grabkeys(void);
+ static void incnmaster(const Arg *arg);
++static int isdescprocess(pid_t p, pid_t c);
+ static void keypress(XEvent *e);
+ static void killclient(const Arg *arg);
+ static void manage(Window w, XWindowAttributes *wa);
+@@ -228,6 +238,7 @@ static void updatewindowtype(Client *c);
+ static void updatetitle(Client *c);
+ static void updatewmhints(Client *c);
+ static void view(const Arg *arg);
++static pid_t winpid(Window w);
+ static Client *wintoclient(Window w);
+ static Monitor *wintomon(Window w);
+ static int xerror(Display *dpy, XErrorEvent *ee);
+@@ -269,6 +280,8 @@ static Drw *drw;
+ static Monitor *mons, *selmon;
+ static Window root;
+ 
++static xcb_connection_t *xcon;
++
+ /* configuration, allows nested code to access above variables */
+ #include "config.h"
+ 
+@@ -1757,6 +1818,20 @@ unmanage(Client *c, int destroyed)
+ 	Monitor *m = c->mon;
+ 	XWindowChanges wc;
+ 
++	if (c->swallowing) {
++		unswallow(c);
++		return;
++	}
++
++	Client *s = swallowingclient(c->win);
++	if (s) {
++		free(s->swallowing);
++		s->swallowing = NULL;
++		arrange(m);
++        focus(NULL);
++		return;
++	}
++
+ 	/* The server grab construct avoids race conditions. */
+ 	detach(c);
+ 	detachstack(c);
+@@ -2130,6 +2308,8 @@ main(int argc, char *argv[])
+ 		fputs("warning: no locale support\n", stderr);
+ 	if (!(dpy = XOpenDisplay(NULL)))
+ 		die("dwm: cannot open display\n");
++	if (!(xcon = XGetXCBConnection(dpy)))
++		die("dwm: cannot get xcb connection\n");
+ 	checkotherwm();
+ 	setup();
+ 	scan();
